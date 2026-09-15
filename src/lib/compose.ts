@@ -81,6 +81,26 @@ export async function composeFramedPhoto(
   return canvas.toDataURL("image/jpeg", 0.92);
 }
 
+/**
+ * Decode a user-picked image file onto a canvas, honouring EXIF orientation so
+ * portrait phone photos are not laid on their side.
+ */
+export async function canvasFromFile(file: File): Promise<HTMLCanvasElement> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("That file is not an image");
+  }
+
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas not supported");
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  return canvas;
+}
+
 export function downloadDataUrl(dataUrl: string, filename: string) {
   const link = document.createElement("a");
   link.href = dataUrl;
@@ -92,4 +112,19 @@ export function downloadDataUrl(dataUrl: string, filename: string) {
 
 export function whatsappShareUrl(text: string) {
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+/**
+ * Per-network share links, used when the browser has no native share sheet
+ * (desktop, mostly). Facebook and X only accept a URL, so the page at that URL
+ * carries the photo through its Open Graph tags.
+ */
+export function socialShareUrls(text: string, url: string) {
+  const t = encodeURIComponent(text);
+  const u = encodeURIComponent(url);
+  return {
+    whatsapp: `https://wa.me/?text=${t}`,
+    facebook: `https://www.facebook.com/sharer/sharer.php?u=${u}`,
+    x: `https://twitter.com/intent/tweet?text=${t}`,
+  };
 }

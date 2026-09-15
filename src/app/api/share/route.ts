@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import mongoose from "mongoose";
 import { nanoid } from "nanoid";
 import { connectDB } from "@/lib/mongodb";
 import { Share } from "@/lib/models/Share";
@@ -36,8 +37,14 @@ export async function POST(request: Request) {
     await connectDB();
     await Share.create({ shareId, participantId, name, image: buffer, contentType });
 
-    if (participantId) {
-      await Participant.findByIdAndUpdate(participantId, { shareId });
+    // Best-effort back-reference. The share already exists at this point, so a
+    // bad or stale participant id must not fail the whole request.
+    if (participantId && mongoose.isValidObjectId(participantId)) {
+      try {
+        await Participant.findByIdAndUpdate(participantId, { shareId });
+      } catch (err) {
+        console.error("Participant backfill failed:", err);
+      }
     }
 
     const appUrl = appUrlFrom(request);

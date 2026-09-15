@@ -14,7 +14,7 @@ export default function HomePage() {
             <span className="mt-1 block text-green">in the frame</span>
           </>
         }
-        subtitle="Add your details, take a photo inside the official summit frame, then save it or share it on WhatsApp."
+        subtitle="Add your details, take a photo or upload one into the official summit frame, then save it or share it on social media."
       />
 
       <section

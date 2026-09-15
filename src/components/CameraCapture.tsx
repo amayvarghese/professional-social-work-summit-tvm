@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FRAME } from "@/lib/frame";
-import { composeFramedPhoto } from "@/lib/compose";
+import { canvasFromFile, composeFramedPhoto } from "@/lib/compose";
 import PageHeader from "./PageHeader";
 import Notice from "./Notice";
-import { ArrowLeftIcon, CameraIcon, FlipIcon } from "./Icons";
+import { ArrowLeftIcon, CameraIcon, FlipIcon, UploadIcon } from "./Icons";
 
 export default function CameraCapture() {
   const router = useRouter();
@@ -16,6 +16,7 @@ export default function CameraCapture() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
@@ -59,20 +60,40 @@ export default function CameraCapture() {
     return () => stopStream();
   }, [startCamera, stopStream]);
 
+  function handOff(dataUrl: string) {
+    stopStream();
+    sessionStorage.setItem("framedPhoto", dataUrl);
+    sessionStorage.setItem("participantId", participantId);
+    sessionStorage.setItem("participantName", name);
+    router.push("/result");
+  }
+
   async function capture() {
     if (!videoRef.current || capturing) return;
     setCapturing(true);
+    setError("");
     try {
-      const dataUrl = await composeFramedPhoto(videoRef.current, {
-        mirror: facingMode === "user",
-      });
-      stopStream();
-      sessionStorage.setItem("framedPhoto", dataUrl);
-      sessionStorage.setItem("participantId", participantId);
-      sessionStorage.setItem("participantName", name);
-      router.push("/result");
+      handOff(
+        await composeFramedPhoto(videoRef.current, {
+          mirror: facingMode === "user",
+        })
+      );
     } catch {
       setError("Could not capture photo. Please try again.");
+      setCapturing(false);
+    }
+  }
+
+  async function useUploadedFile(file: File | undefined) {
+    if (!file || capturing) return;
+    setCapturing(true);
+    setError("");
+    try {
+      // An uploaded photo is never mirrored — that only corrects the
+      // front-camera preview.
+      handOff(await composeFramedPhoto(await canvasFromFile(file), { mirror: false }));
+    } catch {
+      setError("Could not use that image. Try a different photo.");
       setCapturing(false);
     }
   }
@@ -95,7 +116,7 @@ export default function CameraCapture() {
         subtitle={
           <>
             Hi <span className="font-semibold text-navy">{name}</span> — keep your face inside
-            the circle. The summit frame is applied right after you capture.
+            the circle, or upload a photo you already have.
           </>
         }
       />
@@ -146,6 +167,18 @@ export default function CameraCapture() {
 
       {error ? <Notice tone="error">{error}</Notice> : null}
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={(e) => {
+          void useUploadedFile(e.target.files?.[0]);
+          // Reset so picking the same file twice still fires a change event.
+          e.target.value = "";
+        }}
+      />
+
       <div className="flex items-center justify-between gap-4 px-2">
         <button
           type="button"
@@ -169,12 +202,24 @@ export default function CameraCapture() {
 
         <button
           type="button"
-          onClick={() => router.push("/")}
-          className="flex h-14 w-14 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-2xl border border-navy/15 bg-white/85 text-navy transition-colors duration-200 hover:border-navy/35 hover:bg-white"
-          aria-label="Go back to your details"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={capturing}
+          className="flex h-14 w-14 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-2xl border border-navy/15 bg-white/85 text-navy transition-colors duration-200 hover:border-navy/35 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Upload a photo from your device"
         >
-          <ArrowLeftIcon className="h-5 w-5" />
-          <span className="text-[0.6rem] font-semibold">Back</span>
+          <UploadIcon className="h-5 w-5" />
+          <span className="text-[0.6rem] font-semibold">Upload</span>
+        </button>
+      </div>
+
+      <div className="flex flex-col items-center gap-4">
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          className="inline-flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-navy/60 transition-colors duration-200 hover:text-navy"
+        >
+          <ArrowLeftIcon className="h-4 w-4" />
+          Back to your details
         </button>
       </div>
     </main>

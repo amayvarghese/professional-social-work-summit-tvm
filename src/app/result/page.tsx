@@ -2,10 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { downloadDataUrl, whatsappShareUrl } from "@/lib/compose";
+import { downloadDataUrl, socialShareUrls } from "@/lib/compose";
 import PageHeader from "@/components/PageHeader";
 import Notice from "@/components/Notice";
-import { DownloadIcon, FlipIcon, WhatsAppIcon } from "@/components/Icons";
+import {
+  DownloadIcon,
+  FacebookIcon,
+  FlipIcon,
+  LinkIcon,
+  ShareIcon,
+  WhatsAppIcon,
+  XIcon,
+} from "@/components/Icons";
 
 export default function ResultActions() {
   const router = useRouter();
@@ -15,6 +23,12 @@ export default function ResultActions() {
   const [sharing, setSharing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  // Populated only when the browser has no native share sheet, so desktop
+  // users still get somewhere to go.
+  const [fallback, setFallback] = useState<{
+    links: ReturnType<typeof socialShareUrls>;
+    shareUrl: string;
+  } | null>(null);
 
   useEffect(() => {
     const data = sessionStorage.getItem("framedPhoto");
@@ -35,7 +49,7 @@ export default function ResultActions() {
     setMessage("Image saved. Check your Downloads or Photos.");
   }
 
-  async function shareWhatsApp() {
+  async function shareEverywhere() {
     if (!photo || sharing) return;
     setSharing(true);
     setError("");
@@ -90,8 +104,8 @@ export default function ResultActions() {
         }
       }
 
-      window.open(whatsappShareUrl(text), "_blank", "noopener,noreferrer");
-      setMessage("WhatsApp opened with your photo link.");
+      setFallback({ links: socialShareUrls(text, data.shareUrl), shareUrl: data.shareUrl });
+      setMessage("Pick where to share your photo.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not share");
     } finally {
@@ -121,7 +135,7 @@ export default function ResultActions() {
             <span className="mt-1 block text-green">is ready</span>
           </>
         }
-        subtitle="Save it to your photos, or share it straight to WhatsApp."
+        subtitle="Save it to your photos, or share it to WhatsApp, Instagram, Facebook and more."
       />
 
       <figure className="animate-rise card overflow-hidden p-3 [animation-delay:60ms]">
@@ -134,10 +148,58 @@ export default function ResultActions() {
       </figure>
 
       <div className="flex flex-col gap-3">
-        <button type="button" onClick={shareWhatsApp} disabled={sharing} className="btn btn-whatsapp w-full">
-          <WhatsAppIcon className="h-[18px] w-[18px]" />
-          {sharing ? "Creating link…" : "Share on WhatsApp"}
+        <button
+          type="button"
+          onClick={shareEverywhere}
+          disabled={sharing}
+          className="btn btn-saffron w-full"
+        >
+          <ShareIcon className="h-[18px] w-[18px]" />
+          {sharing ? "Creating link…" : "Share on social media"}
         </button>
+
+        {fallback ? (
+          <div className="card flex flex-col gap-3 p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.1em] text-navy/60">
+              Share to
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { key: "whatsapp", label: "WhatsApp", Icon: WhatsAppIcon },
+                  { key: "facebook", label: "Facebook", Icon: FacebookIcon },
+                  { key: "x", label: "X", Icon: XIcon },
+                ] as const
+              ).map(({ key, label, Icon }) => (
+                <a
+                  key={key}
+                  href={fallback.links[key]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-h-[4.25rem] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-navy/12 bg-white/85 text-navy transition-colors duration-200 hover:border-navy/30 hover:bg-white"
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="text-[0.68rem] font-semibold">{label}</span>
+                </a>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(fallback.shareUrl);
+                  setMessage("Link copied to your clipboard.");
+                } catch {
+                  setError("Could not copy the link.");
+                }
+              }}
+              className="btn btn-ghost w-full"
+            >
+              <LinkIcon className="h-[18px] w-[18px]" />
+              Copy link
+            </button>
+          </div>
+        ) : null}
 
         <button type="button" onClick={savePhoto} className="btn btn-primary w-full">
           <DownloadIcon className="h-[18px] w-[18px]" />
