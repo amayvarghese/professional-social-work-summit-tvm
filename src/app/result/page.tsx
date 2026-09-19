@@ -2,18 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { downloadDataUrl, socialShareUrls } from "@/lib/compose";
+import { downloadDataUrl, shareFramedImage } from "@/lib/compose";
 import PageHeader from "@/components/PageHeader";
 import Notice from "@/components/Notice";
 import {
   DownloadIcon,
-  FacebookIcon,
   FlipIcon,
-  LinkIcon,
   ShareIcon,
-  WhatsAppIcon,
-  XIcon,
 } from "@/components/Icons";
+
+const SHARE_TEXT =
+  "I am attending the 1st Kerala Professional Social Work Summit!";
 
 export default function ResultActions() {
   const router = useRouter();
@@ -23,12 +22,6 @@ export default function ResultActions() {
   const [sharing, setSharing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  // Populated only when the browser has no native share sheet, so desktop
-  // users still get somewhere to go.
-  const [fallback, setFallback] = useState<{
-    links: ReturnType<typeof socialShareUrls>;
-    shareUrl: string;
-  } | null>(null);
 
   useEffect(() => {
     const data = sessionStorage.getItem("framedPhoto");
@@ -56,56 +49,16 @@ export default function ResultActions() {
     setMessage("");
 
     try {
-      const res = await fetch("/api/share", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          participantId: participantId || undefined,
-          imageData: photo,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Share failed");
-
-      const createUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-      const text = [
-        `I am proud to be part of the 1st Kerala Professional Social Work Summit!`,
-        ``,
-        `View my photo (fullscreen): ${data.shareUrl}`,
-        ``,
-        `Create yours: ${createUrl}`,
-      ].join("\n");
-
-      // Prefer native share sheet on mobile (can include the image)
-      if (typeof navigator !== "undefined" && navigator.share) {
-        try {
-          const blob = await (await fetch(photo)).blob();
-          const file = new File([blob], "summit-frame.jpg", { type: "image/jpeg" });
-          const canFiles = !navigator.canShare || navigator.canShare({ files: [file] });
-          if (canFiles) {
-            await navigator.share({
-              title: "Kerala Social Work Summit",
-              text,
-              files: [file],
-              url: data.shareUrl,
-            });
-            setMessage("Shared successfully.");
-            return;
-          }
-          await navigator.share({ title: "Kerala Social Work Summit", text, url: data.shareUrl });
-          setMessage("Shared successfully.");
-          return;
-        } catch (shareErr) {
-          if (shareErr instanceof Error && shareErr.name === "AbortError") {
-            setMessage("Share cancelled.");
-            return;
-          }
-        }
+      const result = await shareFramedImage(photo, SHARE_TEXT);
+      if (result === "shared") {
+        setMessage("Shared successfully.");
+      } else if (result === "cancelled") {
+        setMessage("Share cancelled.");
+      } else {
+        setMessage(
+          "Image saved. WhatsApp opened with your message — attach the saved photo if needed."
+        );
       }
-
-      setFallback({ links: socialShareUrls(text, data.shareUrl), shareUrl: data.shareUrl });
-      setMessage("Pick where to share your photo.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not share");
     } finally {
@@ -135,7 +88,7 @@ export default function ResultActions() {
             <span className="mt-1 block text-green">is ready</span>
           </>
         }
-        subtitle="Save it to your photos, or share it to WhatsApp, Instagram, Facebook and more."
+        subtitle="Save it to your photos, or share the image on WhatsApp and other apps."
       />
 
       <figure className="animate-rise card overflow-hidden p-3 [animation-delay:60ms]">
@@ -155,51 +108,8 @@ export default function ResultActions() {
           className="btn btn-saffron w-full"
         >
           <ShareIcon className="h-[18px] w-[18px]" />
-          {sharing ? "Creating link…" : "Share on social media"}
+          {sharing ? "Opening share…" : "Share on social media"}
         </button>
-
-        {fallback ? (
-          <div className="card flex flex-col gap-3 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.1em] text-navy/60">
-              Share to
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              {(
-                [
-                  { key: "whatsapp", label: "WhatsApp", Icon: WhatsAppIcon },
-                  { key: "facebook", label: "Facebook", Icon: FacebookIcon },
-                  { key: "x", label: "X", Icon: XIcon },
-                ] as const
-              ).map(({ key, label, Icon }) => (
-                <a
-                  key={key}
-                  href={fallback.links[key]}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex min-h-[4.25rem] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-navy/12 bg-white/85 text-navy transition-colors duration-200 hover:border-navy/30 hover:bg-white"
-                >
-                  <Icon className="h-5 w-5" />
-                  <span className="text-[0.68rem] font-semibold">{label}</span>
-                </a>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(fallback.shareUrl);
-                  setMessage("Link copied to your clipboard.");
-                } catch {
-                  setError("Could not copy the link.");
-                }
-              }}
-              className="btn btn-ghost w-full"
-            >
-              <LinkIcon className="h-[18px] w-[18px]" />
-              Copy link
-            </button>
-          </div>
-        ) : null}
 
         <button type="button" onClick={savePhoto} className="btn btn-primary w-full">
           <DownloadIcon className="h-[18px] w-[18px]" />

@@ -110,21 +110,91 @@ export function downloadDataUrl(dataUrl: string, filename: string) {
   link.remove();
 }
 
+/** Convert a data URL to a File without fetch() — more reliable in mobile WebViews. */
+export function dataUrlToFile(dataUrl: string, filename: string): File {
+  const [header, data] = dataUrl.split(",");
+  if (!data) throw new Error("Invalid image data");
+
+  const mime = /data:(.*?);/.exec(header)?.[1] || "image/jpeg";
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new File([bytes], filename, { type: mime, lastModified: Date.now() });
+}
+
+function canShareFiles(file: File): boolean {
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+    return false;
+  }
+  // Older Android / iOS may lack canShare; treat that as "try it".
+  if (typeof navigator.canShare !== "function") return true;
+  try {
+    return navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
+function isAbortError(err: unknown): boolean {
+  return (
+    (err instanceof DOMException && err.name === "AbortError") ||
+    (err instanceof Error && err.name === "AbortError")
+  );
+}
+
+function openWhatsAppText(text: string) {
+  const encoded = encodeURIComponent(text);
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  // App scheme works more reliably on phones; wa.me for desktop.
+  const href = mobile
+    ? `whatsapp://send?text=${encoded}`
+    : `https://wa.me/?text=${encoded}`;
+  window.location.href = href;
+}
+
+export type ShareImageResult = "shared" | "fallback" | "cancelled";
+
+/**
+ * Share the framed JPEG via the OS sheet (image + short text, no URL).
+ * Falls back to saving the file and opening WhatsApp with text only.
+ */
+export async function shareFramedImage(
+  photoDataUrl: string,
+  text: string
+): Promise<ShareImageResult> {
+  const file = dataUrlToFile(photoDataUrl, "summit-frame.jpg");
+
+  if (canShareFiles(file)) {
+    // Prefer image + caption. No `url` — that forces a link-only share on WhatsApp.
+    try {
+      await navigator.share({
+        files: [file],
+        text,
+        title: "Kerala Social Work Summit",
+      });
+      return "shared";
+    } catch (err) {
+      if (isAbortError(err)) return "cancelled";
+    }
+
+    // Some Android builds reject text+files together; retry with the image alone.
+    try {
+      await navigator.share({ files: [file] });
+      return "shared";
+    } catch (err) {
+      if (isAbortError(err)) return "cancelled";
+    }
+  }
+
+  // Last resort: download the image, open WhatsApp with the short message.
+  downloadDataUrl(photoDataUrl, `kerala-summit-${Date.now()}.jpg`);
+  openWhatsAppText(text);
+  return "fallback";
+}
+
 export function whatsappShareUrl(text: string) {
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
 
-/**
- * Per-network share links, used when the browser has no native share sheet
- * (desktop, mostly). Facebook and X only accept a URL, so the page at that URL
- * carries the photo through its Open Graph tags.
- */
-export function socialShareUrls(text: string, url: string) {
-  const t = encodeURIComponent(text);
-  const u = encodeURIComponent(url);
-  return {
-    whatsapp: `https://wa.me/?text=${t}`,
-    facebook: `https://www.facebook.com/sharer/sharer.php?u=${u}`,
-    x: `https://twitter.com/intent/tweet?text=${t}`,
-  };
-}
