@@ -11,8 +11,26 @@ import {
   ShareIcon,
 } from "@/components/Icons";
 
-const SHARE_TEXT =
-  "I am attending the 1st Kerala Professional Social Work Summit!";
+/** Prefer the live public site — never share a localhost create-your-own link. */
+function createYourOwnUrl() {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "");
+  if (fromEnv && !/localhost|127\.0\.0\.1/.test(fromEnv)) return fromEnv;
+
+  if (typeof window !== "undefined") {
+    const origin = window.location.origin;
+    if (origin && !/localhost|127\.0\.0\.1/.test(origin)) return origin;
+  }
+
+  return "https://professional-social-work-summit-tvm.vercel.app";
+}
+
+function buildShareText() {
+  return [
+    "I am attending the 1st Kerala Professional Social Work Summit!",
+    "",
+    `Create your own at: ${createYourOwnUrl()}`,
+  ].join("\n");
+}
 
 export default function ResultActions() {
   const router = useRouter();
@@ -49,7 +67,7 @@ export default function ResultActions() {
     setMessage("");
 
     try {
-      const result = await shareFramedImage(photo, SHARE_TEXT);
+      const result = await shareFramedImage(photo, buildShareText());
       if (result === "shared") {
         setMessage("Shared successfully.");
       } else if (result === "cancelled") {
